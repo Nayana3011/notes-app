@@ -1,98 +1,254 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import {
+  createNote,
+  deleteNote,
+  getNotes,
+  updateNote,
+} from '../../src/services/noteService';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+type Note = {
+  id: number;
+  title: string;
+  content: string | null;
+  created_at: string;
+};
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  useEffect(() => {
+    loadNotes();
+  }, []);
+
+  async function loadNotes() {
+    try {
+      const data = await getNotes();
+      setNotes(data ?? []);
+    } catch (error) {
+      console.error('Failed to load notes:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAddNote() {
+    if (!title.trim()) {
+      return;
+    }
+
+    try {
+      const newNote = await createNote(
+        title.trim(),
+        content.trim()
+      );
+
+      setNotes((currentNotes) => [
+        newNote,
+        ...currentNotes,
+      ]);
+
+      setTitle('');
+      setContent('');
+    } catch (error) {
+      console.error('Failed to create note:', error);
+    }
+  }
+
+  async function handleDeleteNote(id: number) {
+    try {
+      await deleteNote(id);
+
+      setNotes((currentNotes) =>
+        currentNotes.filter((note) => note.id !== id)
+      );
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+    }
+  }
+
+  async function handleUpdateNote() {
+    if (editingId === null || !title.trim()) {
+      return;
+    }
+
+    try {
+      const updatedNote = await updateNote(
+        editingId,
+        title.trim(),
+        content.trim()
+      );
+
+      setNotes((currentNotes) =>
+        currentNotes.map((note) =>
+          note.id === editingId ? updatedNote : note
+        )
+      );
+
+      setTitle('');
+      setContent('');
+      setEditingId(null);
+    } catch (error) {
+      console.error('Failed to update note:', error);
+    }
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.heading}>My Notes</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Note title"
+        value={title}
+        onChangeText={setTitle}
+      />
+
+      <TextInput
+        style={[styles.input, styles.contentInput]}
+        placeholder="Write your note..."
+        value={content}
+        onChangeText={setContent}
+        multiline
+      />
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={
+          editingId === null
+            ? handleAddNote
+            : handleUpdateNote
+        }
+      >
+        <Text style={styles.buttonText}>
+          {editingId === null ? 'Add Note' : 'Update Note'}
+        </Text>
+      </TouchableOpacity>
+
+      {loading ? (
+        <Text>Loading...</Text>
+      ) : (
+        <FlatList
+          data={notes}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <View style={styles.noteCard}>
+              <Text style={styles.title}>
+                {item.title}
+              </Text>
+
+              <Text style={styles.content}>
+                {item.content}
+              </Text>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => {
+                  setEditingId(item.id);
+                  setTitle(item.title);
+                  setContent(item.content ?? '');
+                }}
+              >
+                <Text>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeleteNote(item.id)}
+              >
+                <Text style={styles.deleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    padding: 20,
+  },
+
+  heading: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    fontSize: 16,
+  },
+
+  contentInput: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+
+  button: {
+    padding: 14,
+    borderRadius: 8,
+    backgroundColor: '#333',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+
+  noteCard: {
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 10,
+    backgroundColor: '#f2f2f2',
+  },
+
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+
+  content: {
+    fontSize: 15,
+  },
+
+  deleteButton: {
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    backgroundColor: '#ddd',
+  },
+
+  deleteText: {
+    fontWeight: 'bold',
+  },
+
+  editButton: {
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    backgroundColor: '#ddd',
   },
 });
